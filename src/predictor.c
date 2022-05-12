@@ -169,9 +169,10 @@ void init_tournament()
     trn_global_bht = (uint8_t*)malloc(trn_global_bhtSize * sizeof(uint8_t));
     trn_chooser = (uint8_t*)malloc(trn_chooserSize * sizeof(uint8_t));
 
+    memset(trn_local_bht, 0, trn_local_phtSize * sizeof(uint16_t));
     memset(trn_local_bht, 3, trn_local_bhtSize);
-    memset(trn_global_bht, 1, trn_local_bhtSize);
-    memset(trn_chooser, 1, trn_local_bhtSize);
+    memset(trn_global_bht, 1, trn_global_bhtSize);
+    memset(trn_chooser, 1, trn_chooserSize);
 }
 
 uint8_t tournament_predict(uint32_t pc)
@@ -255,9 +256,10 @@ void train_tournament(uint32_t pc, uint8_t outcome)
 
 void cleanup_tournament()
 {
-    for (int i = 0; i < trn_local_bhtSize; i++)
+    /*
+    for (int i = 0; i < trn_chooserSize; i++)
     {
-        uint8_t entry = trn_local_bht[i];
+        uint8_t entry = trn_chooser[i];
         printf("%03X: ", i);
         for (int j = 7; j >= 0; j--)
         {
@@ -266,6 +268,7 @@ void cleanup_tournament()
         }
         printf("\n");
     }
+    */
     free(trn_local_pht);
     free(trn_local_bht);
     free(trn_global_bht);
@@ -351,6 +354,24 @@ void train_predictor(uint32_t pc, uint8_t outcome)
         return train_tournament(pc, outcome);
     case CUSTOM:
         return train_custom(pc, outcome);
+    default:
+        break;
+    }
+}
+
+void cleanup_predictor()
+{
+    switch (bpType)
+    {
+    case STATIC:
+    case GSHARE:
+        cleanup_gshare();
+        break;
+    case TOURNAMENT:
+        cleanup_tournament();
+        break;
+    case CUSTOM:
+        cleanup_custom();
     default:
         break;
     }

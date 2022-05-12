@@ -150,6 +150,7 @@ int main(int argc, char* argv[])
     printf("Misprediction Rate: %7.3f\n", mispredict_rate);
 
     // Cleanup
+    cleanup_predictor();
     fclose(stream);
     free(buf);
 
