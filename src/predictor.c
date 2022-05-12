@@ -39,21 +39,23 @@ const char* email = "e1serran@ucsd.edu";
         printf("Warning: Undefined state of entry\n");                         \
     }
 
-#define PREDICT(a)                                                             \
-    switch (a)                                                                 \
-    {                                                                          \
-    case WN:                                                                   \
-        return NOTTAKEN;                                                       \
-    case SN:                                                                   \
-        return NOTTAKEN;                                                       \
-    case WT:                                                                   \
-        return TAKEN;                                                          \
-    case ST:                                                                   \
-        return TAKEN;                                                          \
-    default:                                                                   \
-        printf("Warning: Undefined state of entry\n");                         \
-        return NOTTAKEN;                                                       \
+uint8_t PREDICT(uint8_t a)
+{
+    switch (a)
+    {
+    case WN:
+        return NOTTAKEN;
+    case SN:
+        return NOTTAKEN;
+    case WT:
+        return TAKEN;
+    case ST:
+        return TAKEN;
+    default:
+        printf("Warning: Undefined state of entry\n");
+        return NOTTAKEN;
     }
+}
 
 //------------------------------------//
 //      Predictor Configuration       //
@@ -210,39 +212,31 @@ void init_tournament()
     memset(trn_chooser, WN, trn_chooserSize);
 }
 
-uint8_t tournament_choose(uint32_t pc)
-{
-    uint16_t ghr = ghistory & (trn_ghrSize - 1);
-    PREDICT(trn_chooser[ghr])
-}
-
 uint8_t tournament_predict(uint32_t pc)
 {
     uint8_t prediction;
 
     // choose local or global
-    uint8_t choice = tournament_choose(pc);
     uint16_t ghr = ghistory & (trn_ghrSize - 1);
+    uint8_t choice = PREDICT(trn_chooser[ghr]);
 
     if (choice == TAKEN)
     {
         // global predictor (1)
         // get prediction based on ghr
-        prediction = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
-        // PREDICT(trn_global_bht[ghr])
+        return PREDICT(trn_global_bht[ghr]);
     }
     else
     {
         // local predictor (0)
         uint16_t pc_idx = pc & (trn_pcSize - 1);
         // get pattern of branch
-        uint16_t pat = trn_local_pht[pc_idx] & (trn_local_phtSize - 1);
+        uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_phtSize - 1);
         // get prediction based on pattern
-        prediction = (trn_local_bht[pat] >> (trn_local_bhtBits - 1)) & 0x1;
-        // PREDICT(trn_local_bht[pat])
+        return PREDICT(trn_local_bht[pat]);
     }
 
-    return prediction ? TAKEN : NOTTAKEN;
+    // return prediction ? TAKEN : NOTTAKEN;
 }
 
 void train_tournament(uint32_t pc, uint8_t outcome)
@@ -253,32 +247,21 @@ void train_tournament(uint32_t pc, uint8_t outcome)
 
     // choose local or global
     uint16_t ghr = ghistory & (trn_ghrSize - 1);
-    choice = tournament_choose(pc);
+    choice = PREDICT(trn_chooser[ghr]);
 
     // global predictor (1)
-    global_pred = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
+    global_pred = PREDICT(trn_global_bht[ghr]);
 
     // local predictor (0)
     uint16_t pc_idx = pc & (trn_pcSize - 1);
-    uint16_t pat = trn_local_pht[pc_idx] & (trn_local_phtSize - 1);
-    local_pred = (trn_local_bht[pat] >> (trn_local_bhtBits - 1)) & 0x1;
+    uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_phtSize - 1);
+    local_pred = PREDICT(trn_local_bht[pat]);
 
     // update tables
     // only update choice if predictions differ
     if (global_pred != local_pred)
     {
-        // TRAIN(trn_chooser[ghr], (outcome == global_pred))
-        // global is correct
-        if (outcome == global_pred)
-        {
-            trn_chooser[ghr] =
-                MIN((trn_chooser[ghr] + 1), (1 << trn_chooserBits) - 1);
-        }
-        // local is correct
-        else
-        {
-            trn_chooser[ghr] = MAX((trn_chooser[ghr] - 1), 0);
-        }
+        TRAIN(trn_chooser[ghr], (outcome == global_pred))
     }
 
     // ghr and pattern table
@@ -286,20 +269,8 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     trn_local_pht[pc_idx] = (trn_local_pht[pc_idx] << 1) | (outcome & 0x1);
 
     // branch history tables
-    // TRAIN(trn_global_bht[ghr], outcome)
-    // TRAIN(trn_local_bht[pat], outcome)
-    if (outcome == TAKEN)
-    {
-        trn_global_bht[ghr] =
-            MIN((trn_global_bht[ghr] + 1), (1 << trn_global_bhtBits) - 1);
-        trn_local_bht[ghr] =
-            MIN((trn_local_bht[pat] + 1), (1 << trn_local_bhtBits) - 1);
-    }
-    else
-    {
-        trn_global_bht[ghr] = MAX((trn_global_bht[ghr] - 1), 0);
-        trn_local_bht[pat] = MAX((trn_local_bht[ghr] - 1), 0);
-    }
+    TRAIN(trn_global_bht[ghr], outcome)
+    TRAIN(trn_local_bht[pat], outcome)
 }
 
 void cleanup_tournament()
