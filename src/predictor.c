@@ -228,8 +228,8 @@ uint8_t tournament_predict(uint32_t pc)
     {
         // global predictor (1)
         // get prediction based on ghr
-        // prediction = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
-        PREDICT(trn_global_bht[ghr])
+        prediction = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
+        // PREDICT(trn_global_bht[ghr])
     }
     else
     {
@@ -238,11 +238,11 @@ uint8_t tournament_predict(uint32_t pc)
         // get pattern of branch
         uint16_t pat = trn_local_pht[pc_idx] & (trn_local_phtSize - 1);
         // get prediction based on pattern
-        // prediction = (trn_local_bht[pat] >> (trn_local_bhtBits - 1)) & 0x1;
-        PREDICT(trn_local_bht[pat])
+        prediction = (trn_local_bht[pat] >> (trn_local_bhtBits - 1)) & 0x1;
+        // PREDICT(trn_local_bht[pat])
     }
 
-    // return prediction ? TAKEN : NOTTAKEN;
+    return prediction ? TAKEN : NOTTAKEN;
 }
 
 void train_tournament(uint32_t pc, uint8_t outcome)
@@ -267,8 +267,7 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     // only update choice if predictions differ
     if (global_pred != local_pred)
     {
-        TRAIN(trn_chooser[ghr], (outcome == global_pred))
-        /*
+        // TRAIN(trn_chooser[ghr], (outcome == global_pred))
         // global is correct
         if (outcome == global_pred)
         {
@@ -280,7 +279,6 @@ void train_tournament(uint32_t pc, uint8_t outcome)
         {
             trn_chooser[ghr] = MAX((trn_chooser[ghr] - 1), 0);
         }
-        */
     }
 
     // ghr and pattern table
@@ -288,9 +286,8 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     trn_local_pht[pc_idx] = (trn_local_pht[pc_idx] << 1) | (outcome & 0x1);
 
     // branch history tables
-    TRAIN(trn_global_bht[ghr], outcome)
-    TRAIN(trn_local_bht[pat], outcome)
-    /*
+    // TRAIN(trn_global_bht[ghr], outcome)
+    // TRAIN(trn_local_bht[pat], outcome)
     if (outcome == TAKEN)
     {
         trn_global_bht[ghr] =
@@ -303,7 +300,6 @@ void train_tournament(uint32_t pc, uint8_t outcome)
         trn_global_bht[ghr] = MAX((trn_global_bht[ghr] - 1), 0);
         trn_local_bht[pat] = MAX((trn_local_bht[ghr] - 1), 0);
     }
-    */
 }
 
 void cleanup_tournament()
