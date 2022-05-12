@@ -10,15 +10,50 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MAX(a, b) (a > b ? a : b)
-#define MIN(a, b) (a < b ? a : b)
-
 //
 // TODO:Student Information
 //
 const char* studentName = "Evan Serrano";
 const char* studentID = "A15543204";
 const char* email = "e1serran@ucsd.edu";
+
+#define MAX(a, b) (a > b ? a : b)
+#define MIN(a, b) (a < b ? a : b)
+
+#define TRAIN(a, outcome)                                                      \
+    switch (a)                                                                 \
+    {                                                                          \
+    case WN:                                                                   \
+        a = (outcome == TAKEN) ? WT : SN;                                      \
+        break;                                                                 \
+    case SN:                                                                   \
+        a = (outcome == TAKEN) ? WN : SN;                                      \
+        break;                                                                 \
+    case WT:                                                                   \
+        a = (outcome == TAKEN) ? ST : WN;                                      \
+        break;                                                                 \
+    case ST:                                                                   \
+        a = (outcome == TAKEN) ? ST : WT;                                      \
+        break;                                                                 \
+    default:                                                                   \
+        printf("Warning: Undefined state of entry\n");                         \
+    }
+
+#define PREDICT(a)                                                             \
+    switch (a)                                                                 \
+    {                                                                          \
+    case WN:                                                                   \
+        return NOTTAKEN;                                                       \
+    case SN:                                                                   \
+        return NOTTAKEN;                                                       \
+    case WT:                                                                   \
+        return TAKEN;                                                          \
+    case ST:                                                                   \
+        return TAKEN;                                                          \
+    default:                                                                   \
+        printf("Warning: Undefined state of entry\n");                         \
+        return NOTTAKEN;                                                       \
+    }
 
 //------------------------------------//
 //      Predictor Configuration       //
@@ -170,9 +205,15 @@ void init_tournament()
     trn_chooser = (uint8_t*)malloc(trn_chooserSize * sizeof(uint8_t));
 
     memset(trn_local_pht, 0, trn_local_phtSize * sizeof(uint16_t));
-    memset(trn_local_bht, 3, trn_local_bhtSize);
-    memset(trn_global_bht, 1, trn_global_bhtSize);
-    memset(trn_chooser, 1, trn_chooserSize);
+    memset(trn_local_bht, WN, trn_local_bhtSize);
+    memset(trn_global_bht, WN, trn_global_bhtSize);
+    memset(trn_chooser, WN, trn_chooserSize);
+}
+
+uint8_t tournament_choose(uint32_t pc)
+{
+    uint16_t ghr = ghistory & (trn_ghrSize - 1);
+    PREDICT(trn_chooser[ghr])
 }
 
 uint8_t tournament_predict(uint32_t pc)
@@ -180,12 +221,15 @@ uint8_t tournament_predict(uint32_t pc)
     uint8_t prediction;
 
     // choose local or global
+    uint8_t choice = tournament_choose(pc);
     uint16_t ghr = ghistory & (trn_ghrSize - 1);
-    if ((trn_chooser[ghr] >> (trn_chooserBits - 1)) & 0x1) // msb of chooser
+
+    if (choice == TAKEN)
     {
         // global predictor (1)
         // get prediction based on ghr
-        prediction = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
+        // prediction = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
+        PREDICT(trn_global_bht[ghr])
     }
     else
     {
@@ -194,10 +238,11 @@ uint8_t tournament_predict(uint32_t pc)
         // get pattern of branch
         uint16_t pat = trn_local_pht[pc_idx] & (trn_local_phtSize - 1);
         // get prediction based on pattern
-        prediction = (trn_local_bht[pat] >> (trn_local_bhtBits - 1)) & 0x1;
+        // prediction = (trn_local_bht[pat] >> (trn_local_bhtBits - 1)) & 0x1;
+        PREDICT(trn_local_bht[pat])
     }
 
-    return prediction ? TAKEN : NOTTAKEN;
+    // return prediction ? TAKEN : NOTTAKEN;
 }
 
 void train_tournament(uint32_t pc, uint8_t outcome)
@@ -208,7 +253,7 @@ void train_tournament(uint32_t pc, uint8_t outcome)
 
     // choose local or global
     uint16_t ghr = ghistory & (trn_ghrSize - 1);
-    choice = (trn_chooser[ghr] >> (trn_chooserBits - 1)) & 0x1;
+    choice = tournament_choose(pc);
 
     // global predictor (1)
     global_pred = (trn_global_bht[ghr] >> (trn_global_bhtBits - 1)) & 0x1;
@@ -222,6 +267,8 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     // only update choice if predictions differ
     if (global_pred != local_pred)
     {
+        TRAIN(trn_chooser[ghr], (outcome == global_pred))
+        /*
         // global is correct
         if (outcome == global_pred)
         {
@@ -233,6 +280,7 @@ void train_tournament(uint32_t pc, uint8_t outcome)
         {
             trn_chooser[ghr] = MAX((trn_chooser[ghr] - 1), 0);
         }
+        */
     }
 
     // ghr and pattern table
@@ -240,18 +288,22 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     trn_local_pht[pc_idx] = (trn_local_pht[pc_idx] << 1) | (outcome & 0x1);
 
     // branch history tables
+    TRAIN(trn_global_bht[ghr], outcome)
+    TRAIN(trn_local_bht[pat], outcome)
+    /*
     if (outcome == TAKEN)
     {
         trn_global_bht[ghr] =
             MIN((trn_global_bht[ghr] + 1), (1 << trn_global_bhtBits) - 1);
         trn_local_bht[ghr] =
-            MIN((trn_local_bht[ghr] + 1), (1 << trn_local_bhtBits) - 1);
+            MIN((trn_local_bht[pat] + 1), (1 << trn_local_bhtBits) - 1);
     }
     else
     {
         trn_global_bht[ghr] = MAX((trn_global_bht[ghr] - 1), 0);
-        trn_local_bht[ghr] = MAX((trn_local_bht[ghr] - 1), 0);
+        trn_local_bht[pat] = MAX((trn_local_bht[ghr] - 1), 0);
     }
+    */
 }
 
 void cleanup_tournament()
