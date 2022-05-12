@@ -265,8 +265,9 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     }
 
     // ghr and pattern table
-    ghistory = (ghistory << 1) | (outcome & 0x1);
-    trn_local_pht[pc_idx] = (trn_local_pht[pc_idx] << 1) | (outcome & 0x1);
+    ghistory = ((ghistory << 1) | (outcome & 0x1)) & (trn_ghrSize - 1);
+    trn_local_pht[pc_idx] = ((trn_local_pht[pc_idx] << 1) | (outcome & 0x1)) &
+                            (trn_local_phtSize - 1);
 
     // branch history tables
     TRAIN(trn_global_bht[ghr], outcome)
@@ -295,19 +296,22 @@ void cleanup_tournament()
 // custom functions
 void init_custom()
 {
+    init_tournament();
 }
 
 uint8_t custom_predict(uint32_t pc)
 {
-    return NOTTAKEN;
+    return tournament_predict(pc);
 }
 
 void train_custom(uint32_t pc, uint8_t outcome)
 {
+    train_tournament(pc, outcome);
 }
 
 void cleanup_custom()
 {
+    cleanup_tournament();
 }
 
 void init_predictor()
@@ -315,6 +319,7 @@ void init_predictor()
     switch (bpType)
     {
     case STATIC:
+        break;
     case GSHARE:
         init_gshare();
         break;
@@ -365,6 +370,7 @@ void train_predictor(uint32_t pc, uint8_t outcome)
     switch (bpType)
     {
     case STATIC:
+        break;
     case GSHARE:
         return train_gshare(pc, outcome);
     case TOURNAMENT:
@@ -381,6 +387,7 @@ void cleanup_predictor()
     switch (bpType)
     {
     case STATIC:
+        break;
     case GSHARE:
         cleanup_gshare();
         break;
