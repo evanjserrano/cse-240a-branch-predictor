@@ -36,7 +36,7 @@ int verbose;
 const int trn_pcBits = 10;        // PC register size (effective size for BP)
 const int trn_ghrBits = 12;       // global history register size
 const int trn_local_phtBits = 10; // local predictor pht entry size
-const int trn_local_bhtBits = 3;  // local predictor bht entry size
+const int trn_local_bhtBits = 2;  // local predictor bht entry size
 const int trn_global_bhtBits = 2; // global preictor bht entry size
 const int trn_chooserBits = 2;    // chooser entry size
 
@@ -169,7 +169,7 @@ void init_tournament()
     trn_global_bht = (uint8_t*)malloc(trn_global_bhtSize * sizeof(uint8_t));
     trn_chooser = (uint8_t*)malloc(trn_chooserSize * sizeof(uint8_t));
 
-    memset(trn_local_bht, 0, trn_local_phtSize * sizeof(uint16_t));
+    memset(trn_local_pht, 0, trn_local_phtSize * sizeof(uint16_t));
     memset(trn_local_bht, 3, trn_local_bhtSize);
     memset(trn_global_bht, 1, trn_global_bhtSize);
     memset(trn_chooser, 1, trn_chooserSize);
@@ -236,8 +236,8 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     }
 
     // ghr and pattern table
-    ghistory = ghistory << 1 | (outcome & 0x1);
-    trn_local_pht[pc_idx] = trn_local_pht[pc_idx] << 1 | (outcome & 0x1);
+    ghistory = (ghistory << 1) | (outcome & 0x1);
+    trn_local_pht[pc_idx] = (trn_local_pht[pc_idx] << 1) | (outcome & 0x1);
 
     // branch history tables
     if (outcome == TAKEN)
@@ -256,10 +256,9 @@ void train_tournament(uint32_t pc, uint8_t outcome)
 
 void cleanup_tournament()
 {
-    /*
-    for (int i = 0; i < trn_chooserSize; i++)
+    for (int i = 0; i < trn_local_bhtSize; i++)
     {
-        uint8_t entry = trn_chooser[i];
+        uint16_t entry = trn_local_bht[i];
         printf("%03X: ", i);
         for (int j = 7; j >= 0; j--)
         {
@@ -268,7 +267,6 @@ void cleanup_tournament()
         }
         printf("\n");
     }
-    */
     free(trn_local_pht);
     free(trn_local_bht);
     free(trn_global_bht);
