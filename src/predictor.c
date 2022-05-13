@@ -70,8 +70,8 @@ int bpType;            // Branch Prediction Type
 int verbose;
 
 // tournament
-const int trn_pcBits = 10;        // PC register size (effective size for BP)
-const int trn_ghrBits = 12;       // global history register size
+const int trn_pcBits = 12;        // PC register size (effective size for BP)
+const int trn_ghrBits = 14;       // global history register size
 const int trn_local_phtBits = 10; // local predictor pht entry size
 const int trn_local_bhtBits = 2;  // local predictor bht entry size
 const int trn_global_bhtBits = 2; // global preictor bht entry size
@@ -276,6 +276,7 @@ void train_tournament(uint32_t pc, uint8_t outcome)
 
 void cleanup_tournament()
 {
+    /*
     for (int i = 0; i < trn_local_bhtSize; i++)
     {
         uint16_t entry = trn_local_bht[i];
@@ -287,6 +288,7 @@ void cleanup_tournament()
         }
         printf("\n");
     }
+    */
     free(trn_local_pht);
     free(trn_local_bht);
     free(trn_global_bht);
