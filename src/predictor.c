@@ -70,19 +70,26 @@ int bpType;            // Branch Prediction Type
 int verbose;
 
 // tournament
-const int trn_pcBits = 12;        // PC register size (effective size for BP)
-const int trn_ghrBits = 14;       // global history register size
+const int trn_pcBits = 11;        // PC register size (effective size for BP)
+const int trn_ghr_bBits = 12;     // global bht index size
+const int trn_ghr_cBits = 11;     // chooser index size
 const int trn_local_phtBits = 10; // local predictor pht entry size
 const int trn_local_bhtBits = 2;  // local predictor bht entry size
 const int trn_global_bhtBits = 2; // global preictor bht entry size
-const int trn_chooserBits = 2;    // chooser entry size
+const int trn_chooserBits = 3;    // chooser entry size
 
-const int trn_pcSize = 1 << trn_pcBits;
-const int trn_ghrSize = 1 << trn_ghrBits;
-const int trn_local_phtSize = 1 << trn_pcBits; // local predictor pht # entries
-const int trn_local_bhtSize = 1 << trn_local_phtBits;
-const int trn_global_bhtSize = 1 << trn_ghrBits;
-const int trn_chooserSize = 1 << trn_ghrBits;
+const int trn_local_phtSize = 1 << 11; // local predictor pht # entries
+const int trn_global_bhtSize = 1 << 12;
+const int trn_chooserSize = 1 << 11;
+const int trn_local_bhtSize = 1 << 10;
+
+// const int trn_local_phtSize = 1 << trn_pcBits;
+// local predictor pht # entries
+// const int trn_local_bhtSize = 1 << trn_local_phtBits;
+// const int trn_global_bhtSize = 1 << trn_ghr_bBits;
+// const int trn_chooserSize = 1 << trn_ghr_cBits;
+
+// custom
 
 //------------------------------------//
 //      Predictor Data Structures     //
@@ -207,9 +214,9 @@ void init_tournament()
     trn_chooser = (uint8_t*)malloc(trn_chooserSize * sizeof(uint8_t));
 
     memset(trn_local_pht, 0, trn_local_phtSize * sizeof(uint16_t));
-    memset(trn_local_bht, WN, trn_local_bhtSize);
-    memset(trn_global_bht, WN, trn_global_bhtSize);
-    memset(trn_chooser, WN, trn_chooserSize);
+    memset(trn_local_bht, WT, trn_local_bhtSize);
+    memset(trn_global_bht, WT, trn_global_bhtSize);
+    memset(trn_chooser, WT, trn_chooserSize);
 }
 
 uint8_t tournament_predict(uint32_t pc)
@@ -217,23 +224,29 @@ uint8_t tournament_predict(uint32_t pc)
     uint8_t prediction;
 
     // choose local or global
-    uint16_t ghr = ghistory & (trn_ghrSize - 1);
-    uint8_t choice = PREDICT(trn_chooser[ghr]);
+    uint16_t ghr_c = ghistory & (trn_chooserSize - 1);
+    uint16_t ghr_b = ghistory & (trn_global_bhtSize - 1);
+    // uint8_t choice = PREDICT(trn_chooser[ghr]);
+    uint8_t choice =
+        trn_chooser[ghr_c] >> (trn_chooserBits - 1) ? TAKEN : NOTTAKEN;
 
     if (choice == TAKEN)
     {
         // global predictor (1)
         // get prediction based on ghr
-        return PREDICT(trn_global_bht[ghr]);
+        // return PREDICT(trn_global_bht[ghr]);
+        return trn_global_bht[ghr_b] >> (trn_global_bhtBits - 1) ? TAKEN
+                                                                 : NOTTAKEN;
     }
     else
     {
         // local predictor (0)
-        uint16_t pc_idx = pc & (trn_pcSize - 1);
+        uint16_t pc_idx = pc & (trn_local_phtSize - 1);
         // get pattern of branch
-        uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_phtSize - 1);
+        uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_bhtSize - 1);
         // get prediction based on pattern
-        return PREDICT(trn_local_bht[pat]);
+        // return PREDICT(trn_local_bht[pat]);
+        return trn_local_bht[pat] >> (trn_local_bhtBits - 1) ? TAKEN : NOTTAKEN;
     }
 
     // return prediction ? TAKEN : NOTTAKEN;
@@ -246,32 +259,57 @@ void train_tournament(uint32_t pc, uint8_t outcome)
     uint8_t choice;
 
     // choose local or global
-    uint16_t ghr = ghistory & (trn_ghrSize - 1);
-    choice = PREDICT(trn_chooser[ghr]);
+    uint16_t ghr_c = ghistory & (trn_chooserSize - 1);
+    uint16_t ghr_b = ghistory & (trn_global_bhtSize - 1);
+    // choice = PREDICT(trn_chooser[ghr]);
+    choice = trn_chooser[ghr_c] >> (trn_chooserBits - 1) ? TAKEN : NOTTAKEN;
 
     // global predictor (1)
-    global_pred = PREDICT(trn_global_bht[ghr]);
+    // global_pred = PREDICT(trn_global_bht[ghr]);
+    global_pred =
+        trn_global_bht[ghr_b] >> (trn_global_bhtBits - 1) ? TAKEN : NOTTAKEN;
 
     // local predictor (0)
-    uint16_t pc_idx = pc & (trn_pcSize - 1);
-    uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_phtSize - 1);
-    local_pred = PREDICT(trn_local_bht[pat]);
+    uint16_t pc_idx = pc & (trn_local_phtSize - 1);
+    uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_bhtSize - 1);
+    // local_pred = PREDICT(trn_local_bht[pat]);
+    local_pred =
+        trn_local_bht[pat] >> (trn_local_bhtBits - 1) ? TAKEN : NOTTAKEN;
 
     // update tables
     // only update choice if predictions differ
     if (global_pred != local_pred)
     {
-        TRAIN(trn_chooser[ghr], (outcome == global_pred))
+        // TRAIN(trn_chooser[ghr], (outcome == global_pred ? TAKEN : NOTTAKEN))
+        if (global_pred == outcome)
+        {
+            trn_chooser[ghr_c] =
+                MIN(trn_chooser[ghr_c] + 1, (1 << trn_chooserBits) - 1);
+        }
+        else if (local_pred == outcome)
+        {
+            trn_chooser[ghr_c] = MAX(trn_chooser[ghr_c], 1) - 1;
+        }
     }
 
     // ghr and pattern table
-    ghistory = ((ghistory << 1) | (outcome & 0x1)) & (trn_ghrSize - 1);
-    trn_local_pht[pc_idx] = ((trn_local_pht[pc_idx] << 1) | (outcome & 0x1)) &
-                            (trn_local_phtSize - 1);
+    ghistory = ((ghistory << 1) | (outcome & 0x1));
+    trn_local_pht[pc_idx] = ((trn_local_pht[pc_idx] << 1) | (outcome & 0x1));
 
     // branch history tables
-    TRAIN(trn_global_bht[ghr], outcome)
-    TRAIN(trn_local_bht[pat], outcome)
+    // TRAIN(trn_global_bht[ghr], outcome)
+    if (outcome == TAKEN)
+        trn_global_bht[ghr_b] =
+            MIN(trn_global_bht[ghr_b] + 1, (1 << trn_global_bhtBits) - 1);
+    else
+        trn_global_bht[ghr_b] = MAX(trn_global_bht[ghr_b], 1) - 1;
+
+    // TRAIN(trn_local_bht[pat], outcome)
+    if (outcome == TAKEN)
+        trn_local_bht[pat] =
+            MIN(trn_local_bht[pat] + 1, (1 << trn_local_bhtBits) - 1);
+    else
+        trn_local_bht[pat] = MAX(trn_local_bht[pat], 1) - 1;
 }
 
 void cleanup_tournament()
@@ -298,22 +336,106 @@ void cleanup_tournament()
 // custom functions
 void init_custom()
 {
-    init_tournament();
+    trn_local_pht = (uint16_t*)malloc(trn_local_phtSize * sizeof(uint16_t));
+    trn_local_bht = (uint8_t*)malloc(trn_local_bhtSize * sizeof(uint8_t));
+    trn_global_bht = (uint8_t*)malloc(trn_global_bhtSize * sizeof(uint8_t));
+    trn_chooser = (uint8_t*)malloc(trn_chooserSize * sizeof(uint8_t));
+
+    memset(trn_local_pht, 0, trn_local_phtSize * sizeof(uint16_t));
+    memset(trn_local_bht, WT, trn_local_bhtSize);
+    memset(trn_global_bht, WT, trn_global_bhtSize);
+    memset(trn_chooser, WT, trn_chooserSize);
 }
 
 uint8_t custom_predict(uint32_t pc)
 {
-    return tournament_predict(pc);
+    uint8_t prediction;
+
+    // choose local or global
+    uint16_t ghr_c = ghistory & (trn_chooserSize - 1);
+    uint16_t ghr_b = (ghistory ^ pc) & (trn_global_bhtSize - 1);
+    // uint8_t choice = PREDICT(trn_chooser[ghr]);
+    uint8_t choice =
+        trn_chooser[ghr_c] >> (trn_chooserBits - 1) ? TAKEN : NOTTAKEN;
+
+    if (choice == TAKEN)
+    {
+        // global predictor (1)
+        // get prediction based on ghr
+        // return PREDICT(trn_global_bht[ghr]);
+        return trn_global_bht[ghr_b] >> (trn_global_bhtBits - 1) ? TAKEN
+                                                                 : NOTTAKEN;
+    }
+    else
+    {
+        // local predictor (0)
+        uint16_t pc_idx = pc & (trn_local_phtSize - 1);
+        // get pattern of branch
+        uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_bhtSize - 1);
+        // get prediction based on pattern
+        // return PREDICT(trn_local_bht[pat]);
+        return trn_local_bht[pat] >> (trn_local_bhtBits - 1) ? TAKEN : NOTTAKEN;
+    }
 }
 
 void train_custom(uint32_t pc, uint8_t outcome)
 {
-    train_tournament(pc, outcome);
-}
+    uint8_t global_pred;
+    uint8_t local_pred;
+    uint8_t choice;
 
-void cleanup_custom()
-{
-    cleanup_tournament();
+    // choose local or global
+    uint16_t ghr_c = (ghistory) & (trn_chooserSize - 1);
+    uint16_t ghr_b = (ghistory ^ pc) & (trn_global_bhtSize - 1);
+    // choice = PREDICT(trn_chooser[ghr]);
+    choice = trn_chooser[ghr_c] >> (trn_chooserBits - 1) ? TAKEN : NOTTAKEN;
+
+    // global predictor (1)
+    // global_pred = PREDICT(trn_global_bht[ghr]);
+    global_pred =
+        trn_global_bht[ghr_b] >> (trn_global_bhtBits - 1) ? TAKEN : NOTTAKEN;
+
+    // local predictor (0)
+    uint16_t pc_idx = pc & (trn_local_phtSize - 1);
+    uint16_t pat = (trn_local_pht[pc_idx]) & (trn_local_bhtSize - 1);
+    // local_pred = PREDICT(trn_local_bht[pat]);
+    local_pred =
+        trn_local_bht[pat] >> (trn_local_bhtBits - 1) ? TAKEN : NOTTAKEN;
+
+    // update tables
+    // only update choice if predictions differ
+    if (global_pred != local_pred)
+    {
+        // TRAIN(trn_chooser[ghr], (outcome == global_pred ? TAKEN : NOTTAKEN))
+        if (global_pred == outcome)
+        {
+            trn_chooser[ghr_c] =
+                MIN(trn_chooser[ghr_c] + 1, (1 << trn_chooserBits) - 1);
+        }
+        else if (local_pred == outcome)
+        {
+            trn_chooser[ghr_c] = MAX(trn_chooser[ghr_c], 1) - 1;
+        }
+    }
+
+    // ghr and pattern table
+    ghistory = ((ghistory << 1) | (outcome & 0x1));
+    trn_local_pht[pc_idx] = ((trn_local_pht[pc_idx] << 1) | (outcome & 0x1));
+
+    // branch history tables
+    // TRAIN(trn_global_bht[ghr], outcome)
+    if (outcome == TAKEN)
+        trn_global_bht[ghr_b] =
+            MIN(trn_global_bht[ghr_b] + 1, (1 << trn_global_bhtBits) - 1);
+    else
+        trn_global_bht[ghr_b] = MAX(trn_global_bht[ghr_b], 1) - 1;
+
+    // TRAIN(trn_local_bht[pat], outcome)
+    if (outcome == TAKEN)
+        trn_local_bht[pat] =
+            MIN(trn_local_bht[pat] + 1, (1 << trn_local_bhtBits) - 1);
+    else
+        trn_local_bht[pat] = MAX(trn_local_bht[pat], 1) - 1;
 }
 
 void init_predictor()
@@ -379,25 +501,6 @@ void train_predictor(uint32_t pc, uint8_t outcome)
         return train_tournament(pc, outcome);
     case CUSTOM:
         return train_custom(pc, outcome);
-    default:
-        break;
-    }
-}
-
-void cleanup_predictor()
-{
-    switch (bpType)
-    {
-    case STATIC:
-        break;
-    case GSHARE:
-        cleanup_gshare();
-        break;
-    case TOURNAMENT:
-        cleanup_tournament();
-        break;
-    case CUSTOM:
-        cleanup_custom();
     default:
         break;
     }
